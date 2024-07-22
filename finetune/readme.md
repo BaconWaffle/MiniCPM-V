@@ -74,20 +74,28 @@ Specially, Llama3 has a different chat_template for training and inference, we m
 The LoRA allows light-weight model tuning with only a small subset of parameters updated. We provide the LoRA implementation based on `peft`. To launch your training, run the following script:
 
 ```
-sh finetune_ds_lora.sh
+sh finetune_lora.sh
 ```
 
 After training, you could load the model with the path to the adapter. We advise you to use absolute path for your pretrained model. This is because LoRA only saves the adapter and the absolute path in the adapter configuration json file is used for finding out the pretrained model to load.
 
 ```
-from peft import AutoPeftModelForCausalLM
+from peft import PeftModel
+from transformers import AutoModel
+model_type="openbmb/MiniCPM-Llama3-V-2_5" # or openbmb/MiniCPM-V-2
+path_to_adapter="path_to_your_fine_tuned_checkpoint"
 
-model = AutoPeftModelForCausalLM.from_pretrained(
-    # path to the output directory
+model =  AutoModel.from_pretrained(
+        model_type,
+        trust_remote_code=True
+        )
+
+lora_model = PeftModel.from_pretrained(
+    model,
     path_to_adapter,
     device_map="auto",
     trust_remote_code=True
-).eval()
+).eval().cuda()
 ```
 
 
@@ -122,10 +130,6 @@ A：When you face Out of Memory (OOM) issues during training large models, the f
 ```
 --batch_size 1
  ```
-- **Lower image resolution**: If your model processes image data, reducing the input resolution of images can effectively decrease memory usage.
-```
---scale_resolution 448 
-```
 - **Reduce the number of slices (`slice`)**: When handling large datasets such as large images files, reducing the number of slices processed each time can lower memory requirements.
 ```
 --max_slice_nums 9 
@@ -171,14 +175,16 @@ A: The error as described in [issues 168](https://github.com/OpenBMB/MiniCPM-V/i
 
 1.**Reload the Fine-Tuned Model:** Make sure you correctly load the checkpoint that has been fine-tuned using lora techniques. Use the following code example to guide you:
    ```python
-   from peft import AutoPeftModelForCausalLM
+ from peft import AutoPeftModel
 
-   model = AutoPeftModelForCausalLM.from_pretrained(
-       'path_to_your_fine_tuned_checkpoint',  # Path to your fine-tuned checkpoint directory
-       output='output/minicpmv2_lora',
-       device_map='auto',
-       trust_remote_code=True
-   ).eval()
+path_to_adapter="path_to_your_fine_tuned_checkpoint"
+
+model = AutoPeftModel.from_pretrained(
+    # path to the output directory
+    path_to_adapter,
+    device_map="auto",
+    trust_remote_code=True
+).eval().cuda()
    ```
   2.**Update the `model_minicpmv.py` File:**
    - **Verification:** Make sure you verify and update your `model_minicpmv.py` file to ensure it is the latest version.
