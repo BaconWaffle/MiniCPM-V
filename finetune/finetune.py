@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from functools import partial
 from typing import Dict, List, Optional, Union, Literal, Tuple
 from types import MethodType
+from torchvision import transforms
+
 import torch
 import transformers
 from accelerate.utils import DistributedType
@@ -106,6 +108,7 @@ def make_supervised_data_module(
         patch_size=patch_size,
         query_nums=query_nums,
         batch_vision=batch_vision,
+        max_length=max_length,
     )
 
     if data_args.eval_data_path:
@@ -119,6 +122,7 @@ def make_supervised_data_module(
             patch_size=patch_size,
             query_nums=query_nums,
             batch_vision=batch_vision,
+            max_length=max_length,
         )
     else:
         eval_dataset = None
@@ -129,6 +133,18 @@ def make_supervised_data_module(
         data_collator= partial(data_collator, max_length=max_length),
     )
 
+
+def build_transform():
+    IMAGENET_INCEPTION_MEAN = (0.5, 0.5, 0.5) # timm.data.IMAGENET_INCEPTION_MEAN
+    IMAGENET_INCEPTION_STD = (0.5, 0.5, 0.5)  # timm.data.IMAGENET_INCEPTION_STD
+    return transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=IMAGENET_INCEPTION_MEAN, std=IMAGENET_INCEPTION_STD
+                ),
+            ]
+        )
 
 def get_parameter_number(model):
     trainable_params, all_param = 0, 0
@@ -186,6 +202,9 @@ def train():
         trust_remote_code=True,
         torch_dtype=compute_dtype,
         device_map=device_map,
+        init_vision=True,
+        init_audio=False,
+        init_tts=False,
     )
 
     tokenizer = AutoTokenizer.from_pretrained(
@@ -248,10 +267,11 @@ def train():
     else:
         batch_vision = False
 
+    transform_func = build_transform()
     data_module = make_supervised_data_module(
         tokenizer=tokenizer,
         data_args=data_args,
-        transform=model.transform,
+        transform=transform_func,
         data_collator=data_collator,
         slice_config=slice_config,
         llm_type=llm_type,
@@ -261,6 +281,7 @@ def train():
         max_length=training_args.model_max_length,
     )
     
+    training_args.gradient_checkpointing_kwargs={"use_reentrant":False}
     trainer = CPMTrainer(
         model=model,
         tokenizer=tokenizer,
